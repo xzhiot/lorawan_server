@@ -1,0 +1,129 @@
+server:
+  name: "LoRaWAN Network Server"
+  version: "1.0.0"
+
+network:
+  net_id: "000000"
+  deduplication_window: 200ms
+  device_session_ttl: 744h
+  band: "CN470"  # 使用CN470频段
+  adr_enabled: true
+
+# CN470多模式配置
+cn470:
+  # 工作模式选择: STANDARD_FDD | CUSTOM_FDD | TDD
+  mode: "STANDARD_FDD"  # 默认使用自定义FDD模式（适合SX1302）
+  
+  # 硬件能力配置
+  hardware:
+    supports_tx_500mhz: true       # SX1302不支持500MHz发送
+    supports_tx_470_490mhz: true   # SX1302支持470-490MHz
+    tx_power_dbm: 19               # 最大发射功率 (dBm)
+    rx_sensitivity_dbm: -137       # 接收灵敏度
+  
+  # 标准FDD配置 (mode=STANDARD_FDD时使用)
+  standard_fdd:
+    uplink_start_freq: 470300000   # 上行起始: 470.3MHz
+    uplink_end_freq: 489300000     # 上行结束: 489.3MHz (96个信道)
+    downlink_start_freq: 500300000 # 下行起始: 500.3MHz  
+    downlink_end_freq: 509700000   # 下行结束: 509.7MHz (48个信道)
+    frequency_offset: 30000000     # 频率偏移: 30MHz
+    uplink_channels: 96
+    downlink_channels: 48
+  
+  # 自定义FDD配置 (mode=CUSTOM_FDD时使用) - 推荐配置
+  custom_fdd:
+    uplink_start_freq: 470300000   # 上行起始: 470.3MHz
+    uplink_end_freq: 479900000     # 上行结束: 479.9MHz (48个信道)
+    downlink_start_freq: 480300000 # 下行起始: 480.3MHz  
+    downlink_end_freq: 489900000   # 下行结束: 489.9MHz (48个信道)
+    frequency_offset: 10000000     # 频率偏移: 10MHz
+    uplink_channels: 8
+    downlink_channels: 8
+    
+  # TDD配置 (mode=TDD时使用)
+  tdd:
+    start_freq: 470300000          # TDD频段起始: 470.3MHz
+    end_freq: 489900000            # TDD频段结束: 489.9MHz  
+    channels: 96                   # 可用信道数
+    tx_rx_switch_time: 200         # 收发切换时间 (μs)
+  
+  # RX窗口配置
+  rx_windows:
+    rx1_delay: 5                   # RX1延迟 (秒)
+    rx2_delay: 6                   # RX2延迟 (秒)
+    rx2_frequency: 505300000       # RX2频率: 505.3MHz (标准FDD范围内)
+    rx2_data_rate: 0               # RX2数据速率: DR0
+    rx1_dr_offset: 0               # RX1数据速率偏移
+
+  # 信道管理
+  channels:
+    default_channels: 8            # 默认启用信道数（保持8）
+    max_channels_per_device: 8     # 修改：从16改为8
+    channel_spacing: 1200000       # 修改：从200kHz改为1.2MHz
+    channel_hopping: false         # 修改：关闭信道跳频（8信道不需要）
+    
+    # 子频段配置 (每个子频段8个信道，CN470有12个子频段)
+    enabled_sub_bands: [0]  # 启用的子频段（0-5对应48个信道）
+    
+  # ADR (自适应数据速率) 配置
+  adr:
+    enabled: true                  # 启用ADR
+    target_snr: 10                 # 目标SNR (dB)
+    margin_snr: 3                  # SNR余量 (dB)
+    history_size: 20               # ADR历史记录数
+    min_data_rate: 0               # 最小数据速率
+    max_data_rate: 5               # 最大数据速率
+    min_tx_power: 0                # 最小发射功率索引
+    max_tx_power: 7                # 最大发射功率索引
+    
+  # MAC命令配置
+  mac:
+    ping_slot_periodicity: 7       # Ping时隙周期性
+    max_duty_cycle: 1              # 最大占空比 (%)
+    supports_join: true            # 支持OTAA入网
+    supports_class_b: false        # 支持Class B
+    supports_class_c: true        # 支持Class C
+
+  # 设备兼容性配置
+  device_compatibility:
+    # 默认使用标准模式
+    default_mode: "STANDARD_FDD"
+    
+    # 特定设备的模式覆盖
+    device_overrides:
+      # E78-470LN22S需要标准200kHz间隔
+      - device_type: "E78-470LN22S"
+        mode: "STANDARD_FDD"
+        channel_spacing: 200000
+      
+      # 未来支持自定义频率的设备
+      - device_type: "CUSTOM_DEVICE"
+        mode: "CUSTOM_FDD"
+        channel_spacing: 1200000
+
+# 数据库配置
+database:
+  dsn: "postgres://lorawan:lorawan@localhost:5432/lorawan_as?sslmode=disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 1h
+
+# Redis缓存配置
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 1
+
+# NATS消息队列配置
+nats:
+  url: "nats://localhost:4222"
+  username: ""
+  password: ""
+  max_reconnects: 5
+  reconnect_interval: 2s
+  
+# 日志配置
+log:
+  level: "info"      # 日志级别: debug, info, warn, error
+  format: "console"  # 日志格式: console, json

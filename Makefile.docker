@@ -1,0 +1,36 @@
+.PHONY: docker-build docker-up docker-down docker-logs docker-clean docker-dev
+
+# Docker commands
+docker-build:
+	@echo "Building Docker images..."
+	@docker compose build
+
+docker-up:
+	@echo "Starting services with Docker..."
+	@docker compose up -d
+	@echo "Services started. Web UI: http://localhost:8098"
+
+docker-down:
+	@echo "Stopping Docker services..."
+	@docker compose down
+
+docker-logs:
+	@docker compose logs -f
+
+docker-clean:
+	@echo "Cleaning Docker resources..."
+	@docker compose down -v
+	@docker system prune -f
+
+docker-dev:
+	@echo "Starting development environment..."
+	@docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Deployment
+deploy:
+	@./deploy.sh
+
+# Quick commands
+up: docker-up
+down: docker-down
+logs: docker-logs

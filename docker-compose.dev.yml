@@ -1,0 +1,38 @@
+
+# Development overrides
+services:
+  application-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.app-server
+      target: builder  # Stop at builder stage for development
+    volumes:
+      - ./:/app
+      - go_mod_cache:/go/pkg/mod
+    command: go run ./cmd/application-server -config config/application-server.yml
+    environment:
+      CGO_ENABLED: 0
+      GOOS: linux
+
+  network-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.network-server
+      target: builder
+    volumes:
+      - ./:/app
+      - go_mod_cache:/go/pkg/mod
+    command: go run ./cmd/network-server -config config/network-server.yml
+
+  gateway-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway-bridge
+      target: builder
+    volumes:
+      - ./:/app
+      - go_mod_cache:/go/pkg/mod
+    command: go run ./cmd/gateway-bridge -config config/gateway-bridge.yml
+
+volumes:
+  go_mod_cache:

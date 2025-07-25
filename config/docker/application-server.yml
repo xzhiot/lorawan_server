@@ -1,0 +1,41 @@
+server:
+  name: "LoRaWAN Application Server"
+  version: "1.0.0"
+
+api:
+  host: "0.0.0.0"
+  port: 8097
+
+web:
+  host: "0.0.0.0"
+  port: 8098
+  static_dir: "/app/web"
+
+database:
+  dsn: "${DATABASE_URL:-postgres://lorawan:lorawan@postgres:5432/lorawan_as?sslmode=disable}"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 1h
+
+redis:
+  addr: "${REDIS_ADDR:-redis:6379}"
+  password: ""
+  db: 0
+
+nats:
+  url: "${NATS_URL:-nats://nats:4222}"
+  cluster_id: "lorawan-cluster"
+  client_id: "application-server"
+  username: ""
+  password: ""
+  max_reconnects: 5
+  reconnect_interval: 2s
+
+jwt:
+  secret: "${JWT_SECRET:-your-secret-key-change-in-production}"
+  access_token_ttl: 24h
+  refresh_token_ttl: 168h
+
+log:
+  level: "${LOG_LEVEL:-info}"
+  format: "console"

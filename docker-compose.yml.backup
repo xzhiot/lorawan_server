@@ -1,0 +1,141 @@
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: lorawan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lorawan
+      POSTGRES_PASSWORD: lorawan
+      POSTGRES_DB: lorawan
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_postgres.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./scripts/schema_as.sql:/docker-entrypoint-initdb.d/02-schema-as.sql
+      - ./scripts/schema_ns.sql:/docker-entrypoint-initdb.d/03-schema-ns.sql
+      - ./scripts/seed_data.sql:/docker-entrypoint-initdb.d/04-seed-data.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - lorawan-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lorawan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: lorawan-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - lorawan-net
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NATS Messaging
+  nats:
+    image: nats:2.10-alpine
+    container_name: lorawan-nats
+    restart: unless-stopped
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - lorawan-net
+    command: ["-js", "-m", "8222"]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Application Server (with Web UI)
+  application-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.app-server
+    container_name: lorawan-app-server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://lorawan:lorawan@postgres:5432/lorawan_as?sslmode=disable
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+      WEB_DIR: /app/web
+      LOG_LEVEL: info
+    ports:
+      - "8097:8097"  # REST API
+      - "8098:8098"  # Web UI
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - lorawan-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8097/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Network Server
+  network-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.network-server
+    container_name: lorawan-network-server
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://lorawan:lorawan@postgres:5432/lorawan_ns?sslmode=disable
+      REDIS_ADDR: redis:6379
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    networks:
+      - lorawan-net
+
+  # Gateway Bridge
+  gateway-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway-bridge
+    container_name: lorawan-gateway-bridge
+    restart: unless-stopped
+    environment:
+      NATS_URL: nats://nats:4222
+      LOG_LEVEL: info
+    ports:
+      - "1700:1700/udp"  # Semtech UDP packet forwarder
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - lorawan-net
+
+networks:
+  lorawan-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:

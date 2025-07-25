@@ -1,0 +1,84 @@
+server:
+  name: "LoRaWAN Gateway Bridge"
+  version: "1.0.0"
+
+gateway:
+  udp_bind: "0.0.0.0:1700"
+  stats_interval: 30s
+  ping_interval: 60s
+  push_timeout: 5s
+
+database:
+  dsn: "postgres://lorawan:lorawan@postgres:5432/lorawan_as?sslmode=disable"
+  max_open_conns: 10
+  max_idle_conns: 5
+  conn_max_lifetime: 1h
+
+nats:
+  url: "nats://nats:4222"
+  username: ""
+  password: ""
+  max_reconnects: 5
+  reconnect_interval: 2s
+
+filters:
+  net_ids: ["000000"]
+  join_euis: []
+
+log:
+  level: "debug"
+  format: "console"
+
+# 新增 network 配置
+network:
+  band: "CN470"
+  net_id: "000000"
+  deduplication_window: 200ms
+  device_session_ttl: 744h  # 31 days
+  adr_enabled: true
+
+# 新增 CN470 配置
+cn470:
+  mode: "STANDARD_FDD"
+  hardware:
+    supports_tx_470_490mhz: true
+    supports_tx_500mhz: true
+    tx_power_dbm: 19
+    rx_sensitivity_dbm: -140
+  custom_fdd:
+    uplink_start_freq: 470300000     # 470.3 MHz
+    uplink_end_freq: 479900000       # 479.9 MHz
+    downlink_start_freq: 480300000   # 480.3 MHz
+    downlink_end_freq: 489900000     # 489.9 MHz
+    frequency_offset: 10000000       # 10 MHz
+    uplink_channels: 8
+    downlink_channels: 8
+  channels:
+    channel_spacing: 1200000         # 1.2 MHz
+    default_channels: 8
+    max_channels_per_device: 8
+    channel_hopping: false
+    enabled_sub_bands: [0]
+  rx_windows:
+    rx1_delay: 1                     # 1 秒
+    rx2_delay: 2                     # 2 秒
+    join_accept_delay1: 5     # JOIN ACCEPT RX1 延迟（秒）
+    join_accept_delay2: 6     # JOIN ACCEPT RX2 延迟（秒）
+    rx2_frequency: 505300000         # 505.3 MHz
+    rx2_data_rate: 0                 # DR0 (SF12BW125)
+    rx1_dr_offset: 0
+  adr:
+    enabled: true
+    target_snr: 10
+    margin_snr: 3
+    history_size: 20
+    min_data_rate: 0
+    max_data_rate: 5
+    min_tx_power: 0
+    max_tx_power: 7
+  mac:
+    ping_slot_periodicity: 7
+    max_duty_cycle: 0
+    supports_join: true
+    supports_class_b: false
+    supports_class_c: true

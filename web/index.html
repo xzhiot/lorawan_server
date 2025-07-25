@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoRaWAN 服务器管理系统</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="logo">
+                <h2>LoRaWAN 服务器</h2>
+            </div>
+            <nav class="nav-menu">
+                <ul>
+                    <li class="active" onclick="showPage('dashboard')">
+                        <span>📊</span> 仪表盘
+                    </li>
+                    <li onclick="showPage('applications')">
+                        <span>📱</span> 应用管理
+                    </li>
+                    <li onclick="showPage('devices')">
+                        <span>📡</span> 设备管理
+                    </li>
+                    <li onclick="showPage('gateways')">
+                        <span>🌐</span> 网关管理
+                    </li>
+                    <li onclick="showPage('events')">
+                        <span>📋</span> 事件日志
+                    </li>
+                    <li onclick="showPage('settings')">
+                        <span>⚙️</span> 系统设置
+                    </li>
+                    <li onclick="showPage('users')">
+                        <span>👥</span> 用户管理
+                    </li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <span></span>
+                <button onclick="logout()">退出登录</button>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 仪表盘页面 -->
+            <div id="dashboard-page" class="page">
+                <header class="page-header">
+                    <h1>仪表盘</h1>
+                </header>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>设备总数</h3>
+                        <p class="stat-number" id="total-devices">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>活跃设备</h3>
+                        <p class="stat-number" id="active-devices">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>网关总数</h3>
+                        <p class="stat-number" id="total-gateways">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>今日消息</h3>
+                        <p class="stat-number" id="messages-today">0</p>
+                    </div>
+                </div>
+
+                <div class="dashboard-section">
+                    <h2>最近活动</h2>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>设备</th>
+                                <th>类型</th>
+                                <th>描述</th>
+                                <th>级别</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-table">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 应用管理页面 -->
+            <div id="applications-page" class="page hidden">
+                <header class="page-header">
+                    <h1>应用管理</h1>
+                    <button class="btn btn-primary" onclick="showAddApplicationModal()">添加应用</button>
+                </header>
+
+                <div class="content-section">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>应用ID</th>
+                                <th>名称</th>
+                                <th>描述</th>
+                                <th>设备数</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="applications-table">
+                            <tr>
+                                <td colspan="6" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 设备管理页面 -->
+            <div id="devices-page" class="page hidden">
+                <header class="page-header">
+                    <h1>设备管理</h1>
+                    <button class="btn btn-primary" onclick="showAddDeviceModal()">添加设备</button>
+                </header>
+
+                <div class="content-section">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>设备EUI</th>
+                                <th>名称</th>
+                                <th>所属应用</th>
+                                <th>状态</th>
+                                <th>设备地址</th>
+                                <th>帧计数</th>
+                                <th>最后更新</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="devices-table">
+                            <tr>
+                                <td colspan="8" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 网关管理页面 -->
+            <div id="gateways-page" class="page hidden">
+                <header class="page-header">
+                    <h1>网关管理</h1>
+                    <button class="btn btn-primary" onclick="showAddGatewayModal()">添加网关</button>
+                </header>
+
+                <div class="content-section">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>网关ID</th>
+                                <th>名称</th>
+                                <th>状态</th>
+                                <th>位置</th>
+                                <th>最后上线</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gateways-table">
+                            <tr>
+                                <td colspan="6" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 事件日志页面 -->
+            <div id="events-page" class="page hidden">
+                <header class="page-header">
+                    <h1>事件日志</h1>
+                </header>
+
+                <div class="content-section">
+                    <div class="filter-section">
+                        <select id="event-filter-type">
+                            <option value="">所有类型</option>
+                            <option value="UPLINK">上行消息</option>
+                            <option value="DOWNLINK">下行消息</option>
+                            <option value="JOIN">入网请求</option>
+                            <option value="ERROR">错误</option>
+                        </select>
+                        <select id="event-filter-level">
+                            <option value="">所有级别</option>
+                            <option value="INFO">信息</option>
+                            <option value="WARNING">警告</option>
+                            <option value="ERROR">错误</option>
+                        </select>
+                        <button class="btn btn-secondary" onclick="loadEvents()">应用筛选</button>
+                    </div>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>类型</th>
+                                <th>级别</th>
+                                <th>设备/网关</th>
+                                <th>描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="events-table">
+                            <tr>
+                                <td colspan="5" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 系统设置页面 -->
+            <div id="settings-page" class="page hidden">
+                <header class="page-header">
+                    <h1>系统设置</h1>
+                </header>
+
+                <div class="content-section">
+                    <h2>用户资料</h2>
+                    <form id="profile-form">
+                        <div class="form-group">
+                            <label>邮箱</label>
+                            <input type="email" id="profile-email" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>名字</label>
+                            <input type="text" id="profile-firstname">
+                        </div>
+                        <div class="form-group">
+                            <label>姓氏</label>
+                            <input type="text" id="profile-lastname">
+                        </div>
+                        <button type="submit" class="btn btn-primary">更新资料</button>
+                    </form>
+
+                    <h2>修改密码</h2>
+                    <form id="password-form">
+                        <div class="form-group">
+                            <label>当前密码</label>
+                            <input type="password" id="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label>新密码</label>
+                            <input type="password" id="new-password">
+                        </div>
+                        <div class="form-group">
+                            <label>确认新密码</label>
+                            <input type="password" id="confirm-password">
+                        </div>
+                        <button type="submit" class="btn btn-primary">修改密码</button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- 用户管理页面 -->
+            <div id="users-page" class="page hidden">
+                <header class="page-header">
+                    <h1>用户管理</h1>
+                    <button class="btn btn-primary" onclick="showAddUserModal()">添加用户</button>
+                </header>
+
+                <div class="content-section">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>邮箱</th>
+                                <th>姓名</th>
+                                <th>角色</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table">
+                            <tr>
+                                <td colspan="6" style="text-align: center;">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+
+</html>

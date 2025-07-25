@@ -1,0 +1,33 @@
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git make
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build network server
+RUN go build -o bin/network-server ./cmd/network-server
+
+# Runtime stage
+FROM alpine:3.18
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/bin/network-server /app/
+COPY --from=builder /app/config/network-server.yml /app/config/
+
+# Create non-root user
+RUN adduser -D -u 1000 lorawan
+USER lorawan
+
+CMD ["/app/network-server", "-config", "/app/config/network-server.yml"]

@@ -1,0 +1,35 @@
+# Build stage
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git make
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build gateway bridge
+RUN go build -o bin/gateway-bridge ./cmd/gateway-bridge
+
+# Runtime stage
+FROM alpine:3.18
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder /app/bin/gateway-bridge /app/
+COPY --from=builder /app/config/gateway-bridge.yml /app/config/
+
+# Create non-root user
+RUN adduser -D -u 1000 lorawan
+USER lorawan
+
+EXPOSE 1700/udp
+
+CMD ["/app/gateway-bridge", "-config", "/app/config/gateway-bridge.yml"]
