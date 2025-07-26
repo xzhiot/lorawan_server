@@ -1,10 +1,11 @@
 // 简单缓存系统
 const simpleCache = {
   data: {},
-  set(key, value, ttl = 300000) { // 5分钟默认
+  set(key, value, ttl = 300000) {
+    // 5分钟默认
     this.data[key] = {
       value,
-      expires: Date.now() + ttl
+      expires: Date.now() + ttl,
     };
   },
   get(key) {
@@ -18,7 +19,7 @@ const simpleCache = {
   },
   clear() {
     this.data = {};
-  }
+  },
 };
 
 // 辅助函数：格式化设备状态
@@ -169,12 +170,12 @@ async function apiRequest(method, endpoint, body = null) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "API request failed");
+      throw new Error(data.error || "API请求失败");
     }
 
     return data;
   } catch (error) {
-    console.error("API Error:", error);
+    console.error("API错误:", error);
     showNotification(error.message, "error");
     throw error;
   }
@@ -182,8 +183,10 @@ async function apiRequest(method, endpoint, body = null) {
 
 // 自动刷新间隔配置
 const AUTO_REFRESH_INTERVALS = {
-  dashboard: 30000,  // 30秒
-  events: 10000,     // 10秒 - 事件页面更频繁
+  dashboard: 30000, // 30秒
+  events: 10000, // 10秒 - 事件页面更频繁
+  gateways: 15000, // 15秒 - 网关状态更新
+  devices: 30000, // 30秒 - 设备列表更新
 };
 
 let autoRefreshTimer = null;
@@ -195,18 +198,27 @@ function setupAutoRefresh() {
     clearInterval(autoRefreshTimer);
     autoRefreshTimer = null;
   }
-  
+
   // 获取当前页面的刷新间隔
   const interval = AUTO_REFRESH_INTERVALS[currentPage];
-  
+
   if (interval) {
-    console.log(`设置 ${currentPage} 页面自动刷新，间隔: ${interval/1000}秒`);
-    
+    console.log(`设置 ${currentPage} 页面自动刷新，间隔: ${interval / 1000}秒`);
+
     autoRefreshTimer = setInterval(() => {
-      if (currentPage === "dashboard") {
-        loadDashboard();
-      } else if (currentPage === "events") {
-        loadEvents();  // 直接调用简单刷新
+      switch (currentPage) {
+        case "dashboard":
+          loadDashboard();
+          break;
+        case "events":
+          loadEvents();
+          break;
+        case "gateways":
+          loadGateways();
+          break;
+        case "devices":
+          loadDevices();
+          break;
       }
     }, interval);
   }
@@ -228,7 +240,7 @@ function showPage(page) {
 
   currentPage = page;
   setupAutoRefresh();
-  
+
   // Load page data
   switch (page) {
     case "dashboard":
@@ -283,10 +295,10 @@ async function loadDashboard() {
         .join("");
     } else {
       tbody.innerHTML =
-        '<tr><td colspan="5" style="text-align: center;">No recent activity</td></tr>';
+        '<tr><td colspan="5" style="text-align: center;">暂无最近活动</td></tr>';
     }
   } catch (error) {
-    console.error("Failed to load dashboard:", error);
+    console.error("加载仪表盘失败:", error);
   }
 }
 
@@ -313,7 +325,7 @@ async function loadDashboardStats() {
           allDevices = allDevices.concat(devicesData.devices);
         }
       } catch (error) {
-        console.error(`Failed to load devices for app ${app.id}:`, error);
+        console.error(`加载应用 ${app.id} 的设备失败:`, error);
       }
     }
 
@@ -351,7 +363,7 @@ async function loadDashboardStats() {
     document.getElementById("messages-today").textContent =
       todayMessages.length.toLocaleString();
   } catch (error) {
-    console.error("Failed to load dashboard stats:", error);
+    console.error("加载仪表盘统计失败:", error);
     // 显示默认值
     document.getElementById("total-devices").textContent = "0";
     document.getElementById("active-devices").textContent = "0";
@@ -364,7 +376,9 @@ async function loadDashboardStats() {
 function renderApplicationsTable(apps) {
   const tbody = document.getElementById("applications-table");
   if (apps.length > 0) {
-    tbody.innerHTML = apps.map(app => `
+    tbody.innerHTML = apps
+      .map(
+        (app) => `
       <tr>
         <td>${app.id}</td>
         <td>${app.name}</td>
@@ -372,20 +386,27 @@ function renderApplicationsTable(apps) {
         <td>${app.deviceCount || 0}</td>
         <td>${new Date(app.createdAt).toLocaleDateString()}</td>
         <td>
-          <button class="btn btn-sm" onclick="viewApplication('${app.id}')">View</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteApplication('${app.id}')">Delete</button>
+          <button class="btn btn-sm" onclick="viewApplication('${
+            app.id
+          }')">查看</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteApplication('${
+            app.id
+          }')">删除</button>
         </td>
       </tr>
-    `).join("");
+    `
+      )
+      .join("");
   } else {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No applications found</td></tr>';
+    tbody.innerHTML =
+      '<tr><td colspan="6" style="text-align: center;">未找到应用</td></tr>';
   }
 }
 
 async function loadApplications() {
   try {
     // 先检查缓存
-    const cached = simpleCache.get('applications');
+    const cached = simpleCache.get("applications");
     if (cached) {
       applications = cached;
       renderApplicationsTable(applications);
@@ -394,12 +415,12 @@ async function loadApplications() {
     const data = await apiRequest("GET", "/applications");
     applications = data.applications || [];
     // 存入缓存
-    simpleCache.set('applications', applications);
- 
+    simpleCache.set("applications", applications);
+
     // 渲染表格（抽取渲染逻辑）
     renderApplicationsTable(applications);
   } catch (error) {
-    console.error("Failed to load applications:", error);
+    console.error("加载应用失败:", error);
   }
 }
 
@@ -451,14 +472,14 @@ async function loadDevices() {
                 device.lastFCnt = latest.fCnt;
               }
             } catch (err) {
-              console.log(`No data for device ${device.devEUI}`);
+              console.log(`设备 ${device.devEUI} 暂无数据`);
             }
           }
 
           allDevices = allDevices.concat(data.devices);
         }
       } catch (error) {
-        console.error(`Failed to load devices for app ${app.id}:`, error);
+        console.error(`加载应用 ${app.id} 的设备失败:`, error);
       }
     }
 
@@ -527,30 +548,68 @@ async function loadDevices() {
         '<tr><td colspan="8" style="text-align: center;">暂无设备</td></tr>';
     }
   } catch (error) {
-    console.error("Failed to load devices:", error);
+    console.error("加载设备失败:", error);
     document.getElementById("devices-table").innerHTML =
       '<tr><td colspan="8" style="text-align: center; color: red;">加载失败，请刷新重试</td></tr>';
+  }
+}
+
+// 辅助函数：判断网关是否在线（5分钟内有活动）
+function isOnline(lastSeenAt) {
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  return new Date(lastSeenAt) > fiveMinutesAgo;
+}
+
+// 辅助函数：获取相对时间描述
+function getTimeAgo(timestamp) {
+  const now = new Date();
+  const past = new Date(timestamp);
+  const diffMs = now - past;
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) {
+    return `${diffDays}天前离线`;
+  } else if (diffHours > 0) {
+    return `${diffHours}小时前离线`;
+  } else if (diffMins > 5) {
+    return `${diffMins}分钟前离线`;
+  } else {
+    return "刚刚离线";
   }
 }
 
 // Gateways
 async function loadGateways() {
   try {
-    const data = await apiRequest("GET", "/gateways");
-    const gateways = data.gateways || [];
-
+    // 显示加载状态
     const tbody = document.getElementById("gateways-table");
+    tbody.innerHTML =
+      '<tr><td colspan="6" style="text-align: center;">加载中...</td></tr>';
+
+    // 清除缓存，强制获取最新数据
+    const data = await apiRequest("GET", "/gateways?t=" + Date.now());
+    const gateways = data.gateways || [];
 
     if (gateways.length > 0) {
       tbody.innerHTML = gateways
-        .map(
-          (gateway) => `
+        .map((gateway) => {
+          // 使用 isOnline 函数判断网关是否真的在线（5分钟内有活动）
+          const online = gateway.lastSeenAt && isOnline(gateway.lastSeenAt);
+
+          return `
                 <tr>
                     <td>${gateway.gatewayId}</td>
                     <td>${gateway.name}</td>
-                    <td><span class="status-${
-                      gateway.lastSeenAt ? "active" : "inactive"
-                    }">${gateway.lastSeenAt ? "Online" : "Offline"}</span></td>
+                    <td>
+                        <span class="status-badge ${
+                          online ? "online" : "offline"
+                        }">
+                            ${online ? "🟢 在线" : "🔴 离线"}
+                        </span>
+                    </td>
                     <td>${
                       gateway.location
                         ? `${gateway.location.latitude.toFixed(
@@ -558,29 +617,59 @@ async function loadGateways() {
                           )}, ${gateway.location.longitude.toFixed(4)}`
                         : "-"
                     }</td>
-                    <td>${
-                      gateway.lastSeenAt
-                        ? new Date(gateway.lastSeenAt).toLocaleString()
-                        : "Never"
-                    }</td>
+                    <td>
+                        ${
+                          gateway.lastSeenAt
+                            ? `${new Date(gateway.lastSeenAt).toLocaleString(
+                                "zh-CN"
+                              )}
+                               <small style="display: block; color: #666; font-size: 0.8em;">
+                                 ${
+                                   online
+                                     ? "活跃中"
+                                     : getTimeAgo(gateway.lastSeenAt)
+                                 }
+                               </small>`
+                            : '<span style="color: #999;">从未上线</span>'
+                        }
+                    </td>
                     <td>
                         <button class="btn btn-sm" onclick="viewGateway('${
                           gateway.gatewayId
-                        }')">View</button>
+                        }')">查看</button>
                         <button class="btn btn-sm btn-danger" onclick="deleteGateway('${
                           gateway.gatewayId
-                        }')">Delete</button>
+                        }')">删除</button>
                     </td>
                 </tr>
-            `
-        )
+            `;
+        })
         .join("");
+
+      // 显示最后更新时间
+      console.log(`网关列表已更新 - ${new Date().toLocaleTimeString("zh-CN")}`);
+      const updateTimeElement = document.getElementById("gateways-update-time");
+      if (updateTimeElement) {
+        updateTimeElement.textContent = `最后更新: ${new Date().toLocaleTimeString(
+          "zh-CN"
+        )}`;
+      }
     } else {
       tbody.innerHTML =
-        '<tr><td colspan="6" style="text-align: center;">No gateways found</td></tr>';
+        '<tr><td colspan="6" style="text-align: center;">未找到网关</td></tr>';
     }
   } catch (error) {
-    console.error("Failed to load gateways:", error);
+    console.error("加载网关失败:", error);
+    document.getElementById("gateways-table").innerHTML =
+      '<tr><td colspan="6" style="text-align: center; color: red;">加载失败，请点击刷新按钮重试</td></tr>';
+
+    // 更新时间显示，即使失败
+    const updateTimeElement = document.getElementById("gateways-update-time");
+    if (updateTimeElement) {
+      updateTimeElement.textContent = `最后尝试: ${new Date().toLocaleTimeString(
+        "zh-CN"
+      )} (失败)`;
+    }
   }
 }
 
@@ -590,34 +679,39 @@ async function loadEvents() {
     // 获取筛选条件
     const type = document.getElementById("event-filter-type").value;
     const level = document.getElementById("event-filter-level").value;
-    
+
     let endpoint = `/events?limit=100`;
     if (type) endpoint += `&type=${type}`;
     if (level) endpoint += `&level=${level}`;
-    
-    const data = await apiRequest('GET', endpoint);
+
+    const data = await apiRequest("GET", endpoint);
     const events = data.events || [];
     const tbody = document.getElementById("events-table");
-    
+
     if (events.length > 0) {
       tbody.innerHTML = events
-        .map(event => `
+        .map(
+          (event) => `
           <tr>
-            <td>${new Date(event.createdAt).toLocaleString('zh-CN')}</td>
+            <td>${new Date(event.createdAt).toLocaleString("zh-CN")}</td>
             <td>${event.type}</td>
-            <td><span class="status-${event.level.toLowerCase()}">${event.level}</span></td>
+            <td><span class="status-${event.level.toLowerCase()}">${
+            event.level
+          }</span></td>
             <td>${event.devEUI || event.gatewayId || "-"}</td>
             <td>${event.description}</td>
           </tr>
-        `)
+        `
+        )
         .join("");
     } else {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No events found</td></tr>';
+      tbody.innerHTML =
+        '<tr><td colspan="5" style="text-align: center;">未找到事件</td></tr>';
     }
   } catch (error) {
-    console.error('Failed to load events:', error);
-    document.getElementById('events-table').innerHTML = 
-      '<tr><td colspan="5" style="text-align: center; color: red;">Failed to load events</td></tr>';
+    console.error("加载事件失败:", error);
+    document.getElementById("events-table").innerHTML =
+      '<tr><td colspan="5" style="text-align: center; color: red;">加载事件失败</td></tr>';
   }
 }
 
@@ -629,7 +723,7 @@ async function loadSettings() {
     document.getElementById("profile-firstname").value = user.firstName || "";
     document.getElementById("profile-lastname").value = user.lastName || "";
   } catch (error) {
-    console.error("Failed to load settings:", error);
+    console.error("加载设置失败:", error);
   }
 }
 
@@ -649,18 +743,18 @@ async function loadUsers() {
                     <td>${user.firstName || ""} ${user.lastName || ""}</td>
                     <td><span class="badge ${
                       user.isAdmin ? "badge-admin" : "badge-user"
-                    }">${user.isAdmin ? "Admin" : "User"}</span></td>
+                    }">${user.isAdmin ? "管理员" : "用户"}</span></td>
                     <td><span class="status-${
                       user.isActive ? "active" : "inactive"
-                    }">${user.isActive ? "Active" : "Inactive"}</span></td>
+                    }">${user.isActive ? "活跃" : "未激活"}</span></td>
                     <td>${new Date(user.createdAt).toLocaleDateString()}</td>
                     <td>
                         <button class="btn btn-sm" onclick="editUser('${
                           user.id
-                        }')">Edit</button>
+                        }')">编辑</button>
                         ${
                           user.email !== localStorage.getItem("user_email")
-                            ? `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.id}')">Delete</button>`
+                            ? `<button class="btn btn-sm btn-danger" onclick="deleteUser('${user.id}')">删除</button>`
                             : ""
                         }
                     </td>
@@ -670,12 +764,12 @@ async function loadUsers() {
         .join("");
     } else {
       tbody.innerHTML =
-        '<tr><td colspan="6" style="text-align: center;">No users found</td></tr>';
+        '<tr><td colspan="6" style="text-align: center;">未找到用户</td></tr>';
     }
   } catch (error) {
-    console.error("Failed to load users:", error);
+    console.error("加载用户失败:", error);
     document.getElementById("users-table").innerHTML =
-      '<tr><td colspan="6" style="text-align: center;">Failed to load users. Please check console for errors.</td></tr>';
+      '<tr><td colspan="6" style="text-align: center;">加载用户失败。请检查控制台错误信息。</td></tr>';
   }
 }
 
@@ -715,18 +809,18 @@ function showNotification(message, type = "info") {
 // Add Application Modal
 function showAddApplicationModal() {
   showModal(
-    "Add Application",
+    "添加应用",
     `
         <form id="add-application-form">
             <div class="form-group">
-                <label>Name *</label>
+                <label>名称 *</label>
                 <input type="text" id="app-name" required>
             </div>
             <div class="form-group">
-                <label>Description</label>
+                <label>描述</label>
                 <textarea id="app-description" rows="3"></textarea>
             </div>
-            <button type="submit" class="btn btn-primary">Create Application</button>
+            <button type="submit" class="btn btn-primary">创建应用</button>
         </form>
     `
   );
@@ -743,10 +837,10 @@ function showAddApplicationModal() {
         });
 
         closeModal();
-        showNotification("Application created successfully", "success");
+        showNotification("应用创建成功", "success");
         loadApplications();
       } catch (error) {
-        console.error("Failed to create application:", error);
+        console.error("创建应用失败:", error);
       }
     });
 }
@@ -754,16 +848,16 @@ function showAddApplicationModal() {
 // Add Device Modal
 function showAddDeviceModal() {
   if (applications.length === 0) {
-    showNotification("Please create an application first", "error");
+    showNotification("请先创建一个应用", "error");
     return;
   }
 
   showModal(
-    "Add Device",
+    "添加设备",
     `
         <form id="add-device-form">
             <div class="form-group">
-                <label>Application *</label>
+                <label>应用 *</label>
                 <select id="device-app" required>
                     ${applications
                       .map(
@@ -774,30 +868,30 @@ function showAddDeviceModal() {
                 </select>
             </div>
             <div class="form-group">
-                <label>Device Name *</label>
+                <label>设备名称 *</label>
                 <input type="text" id="device-name" required>
             </div>
             <div class="form-group">
-                <label>Device EUI *</label>
+                <label>设备EUI *</label>
                 <input type="text" id="device-eui" pattern="[0-9A-Fa-f]{16}" maxlength="16" required>
-                <small>16 hex characters</small>
+                <small>16位十六进制字符</small>
             </div>
             <div class="form-group">
-                <label>Join EUI (App EUI)</label>
+                <label>入网EUI (App EUI)</label>
                 <input type="text" id="device-join-eui" pattern="[0-9A-Fa-f]{16}" maxlength="16">
-                <small>16 hex characters (for OTAA)</small>
+                <small>16位十六进制字符 (OTAA需要)</small>
             </div>
             <div class="form-group">
-                <label>Device Profile</label>
+                <label>设备配置</label>
                 <select id="device-profile">
-                    <option value="44444444-4444-4444-4444-444444444444">Default Profile</option>
+                    <option value="44444444-4444-4444-4444-444444444444">默认配置</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Description</label>
+                <label>描述</label>
                 <textarea id="device-description" rows="2"></textarea>
             </div>
-            <button type="submit" class="btn btn-primary">Create Device</button>
+            <button type="submit" class="btn btn-primary">创建设备</button>
         </form>
     `
   );
@@ -819,10 +913,10 @@ function showAddDeviceModal() {
         });
 
         closeModal();
-        showNotification("Device created successfully", "success");
+        showNotification("设备创建成功", "success");
         loadDevices();
       } catch (error) {
-        console.error("Failed to create device:", error);
+        console.error("创建设备失败:", error);
       }
     });
 }
@@ -830,35 +924,35 @@ function showAddDeviceModal() {
 // Add Gateway Modal
 function showAddGatewayModal() {
   showModal(
-    "Add Gateway",
+    "添加网关",
     `
         <form id="add-gateway-form">
             <div class="form-group">
-                <label>Gateway ID *</label>
+                <label>网关ID *</label>
                 <input type="text" id="gateway-id" pattern="[0-9A-Fa-f]{16}" maxlength="16" required>
-                <small>16 hex characters</small>
+                <small>16位十六进制字符</small>
             </div>
             <div class="form-group">
-                <label>Name *</label>
+                <label>名称 *</label>
                 <input type="text" id="gateway-name" required>
             </div>
             <div class="form-group">
-                <label>Description</label>
+                <label>描述</label>
                 <textarea id="gateway-description" rows="2"></textarea>
             </div>
             <div class="form-group">
-                <label>Latitude</label>
+                <label>纬度</label>
                 <input type="number" id="gateway-lat" step="0.000001" min="-90" max="90">
             </div>
             <div class="form-group">
-                <label>Longitude</label>
+                <label>经度</label>
                 <input type="number" id="gateway-lng" step="0.000001" min="-180" max="180">
             </div>
             <div class="form-group">
-                <label>Altitude (meters)</label>
+                <label>高度 (米)</label>
                 <input type="number" id="gateway-alt" step="0.1">
             </div>
-            <button type="submit" class="btn btn-primary">Create Gateway</button>
+            <button type="submit" class="btn btn-primary">创建网关</button>
         </form>
     `
   );
@@ -882,10 +976,10 @@ function showAddGatewayModal() {
         });
 
         closeModal();
-        showNotification("Gateway created successfully", "success");
+        showNotification("网关创建成功", "success");
         loadGateways();
       } catch (error) {
-        console.error("Failed to create gateway:", error);
+        console.error("创建网关失败:", error);
       }
     });
 }
@@ -893,33 +987,33 @@ function showAddGatewayModal() {
 // Add User Modal
 function showAddUserModal() {
   showModal(
-    "Add User",
+    "添加用户",
     `
         <form id="add-user-form">
             <div class="form-group">
-                <label>Email *</label>
+                <label>邮箱 *</label>
                 <input type="email" id="user-email" required>
             </div>
             <div class="form-group">
-                <label>Password *</label>
+                <label>密码 *</label>
                 <input type="password" id="user-password" minlength="6" required>
-                <small>Minimum 6 characters</small>
+                <small>最少6个字符</small>
             </div>
             <div class="form-group">
-                <label>First Name</label>
+                <label>名</label>
                 <input type="text" id="user-firstname">
             </div>
             <div class="form-group">
-                <label>Last Name</label>
+                <label>姓</label>
                 <input type="text" id="user-lastname">
             </div>
             <div class="form-group">
                 <label>
                     <input type="checkbox" id="user-is-admin">
-                    Administrator privileges
+                    管理员权限
                 </label>
             </div>
-            <button type="submit" class="btn btn-primary">Create User</button>
+            <button type="submit" class="btn btn-primary">创建用户</button>
         </form>
     `
   );
@@ -940,10 +1034,10 @@ function showAddUserModal() {
         });
 
         closeModal();
-        showNotification("User created successfully", "success");
+        showNotification("用户创建成功", "success");
         loadUsers();
       } catch (error) {
-        console.error("Failed to create user:", error);
+        console.error("创建用户失败:", error);
       }
     });
 }
@@ -956,49 +1050,49 @@ function logout() {
 
 // Delete functions
 async function deleteApplication(id) {
-  if (confirm("Are you sure you want to delete this application?")) {
+  if (confirm("确定要删除这个应用吗？")) {
     try {
       await apiRequest("DELETE", `/applications/${id}`);
-      showNotification("Application deleted successfully", "success");
+      showNotification("应用删除成功", "success");
       loadApplications();
     } catch (error) {
-      console.error("Failed to delete application:", error);
+      console.error("删除应用失败:", error);
     }
   }
 }
 
 async function deleteDevice(devEUI) {
-  if (confirm("Are you sure you want to delete this device?")) {
+  if (confirm("确定要删除这个设备吗？")) {
     try {
       await apiRequest("DELETE", `/devices/${devEUI}`);
-      showNotification("Device deleted successfully", "success");
+      showNotification("设备删除成功", "success");
       loadDevices();
     } catch (error) {
-      console.error("Failed to delete device:", error);
+      console.error("删除设备失败:", error);
     }
   }
 }
 
 async function deleteGateway(gatewayId) {
-  if (confirm("Are you sure you want to delete this gateway?")) {
+  if (confirm("确定要删除这个网关吗？")) {
     try {
       await apiRequest("DELETE", `/gateways/${gatewayId}`);
-      showNotification("Gateway deleted successfully", "success");
+      showNotification("网关删除成功", "success");
       loadGateways();
     } catch (error) {
-      console.error("Failed to delete gateway:", error);
+      console.error("删除网关失败:", error);
     }
   }
 }
 
 async function deleteUser(userId) {
-  if (confirm("Are you sure you want to delete this user?")) {
+  if (confirm("确定要删除这个用户吗？")) {
     try {
       await apiRequest("DELETE", `/users/${userId}`);
-      showNotification("User deleted successfully", "success");
+      showNotification("用户删除成功", "success");
       loadUsers();
     } catch (error) {
-      console.error("Failed to delete user:", error);
+      console.error("删除用户失败:", error);
     }
   }
 }
@@ -1010,23 +1104,23 @@ async function viewApplication(id) {
     const devices = await apiRequest("GET", `/devices?application_id=${id}`);
 
     showModal(
-      "Application Details",
+      "应用详情",
       `
         <div class="app-details" data-app-id="${id}">
             <div class="app-header">
                 <h3>${app.name}</h3>
-                <p>${app.description || "No description"}</p>
+                <p>${app.description || "暂无描述"}</p>
             </div>
             
             <div class="app-stats-grid">
                 <div class="stat-card">
-                    <h4>Total Devices</h4>
+                    <h4>设备总数</h4>
                     <p class="stat-number">${
                       devices.devices ? devices.devices.length : 0
                     }</p>
                 </div>
                 <div class="stat-card">
-                    <h4>Active Devices</h4>
+                    <h4>活跃设备</h4>
                     <p class="stat-number">${
                       devices.devices
                         ? devices.devices.filter((d) => !d.isDisabled).length
@@ -1034,17 +1128,17 @@ async function viewApplication(id) {
                     }</p>
                 </div>
                 <div class="stat-card">
-                    <h4>Messages Today</h4>
+                    <h4>今日消息</h4>
                     <p class="stat-number" id="app-messages-today">0</p>
                 </div>
                 <div class="stat-card">
-                    <h4>Created</h4>
+                    <h4>创建时间</h4>
                     <p>${new Date(app.createdAt).toLocaleDateString()}</p>
                 </div>
             </div>
             
             <div class="app-section">
-                <h4>Integration Settings</h4>
+                <h4>集成设置</h4>
                 <div class="integration-tabs">
                     <button class="tab-btn active" onclick="showIntegrationTab('http')">HTTP</button>
                     <button class="tab-btn" onclick="showIntegrationTab('mqtt')">MQTT</button>
@@ -1053,61 +1147,61 @@ async function viewApplication(id) {
                 <div id="http-integration" class="integration-content">
                     <form id="http-integration-form">
                         <div class="form-group">
-                            <label>Webhook URL</label>
+                            <label>Webhook地址</label>
                             <input type="url" id="http-endpoint" placeholder="https://example.com/webhook">
                         </div>
                         <div class="form-group">
-                            <label>HTTP Headers (JSON format)</label>
+                            <label>HTTP头部 (JSON格式)</label>
                             <textarea id="http-headers" rows="3" placeholder='{"Authorization": "Bearer token"}'>{}</textarea>
                         </div>
                         <div class="form-group">
                             <label>
                                 <input type="checkbox" id="http-enabled">
-                                Enable HTTP Integration
+                                启用HTTP集成
                             </label>
                         </div>
-                        <button type="submit" class="btn btn-primary">Save HTTP Settings</button>
+                        <button type="submit" class="btn btn-primary">保存HTTP设置</button>
                     </form>
                 </div>
                 
                 <div id="mqtt-integration" class="integration-content hidden">
                     <form id="mqtt-integration-form">
                         <div class="form-group">
-                            <label>MQTT Broker URL</label>
+                            <label>MQTT服务器地址</label>
                             <input type="text" id="mqtt-broker" placeholder="mqtt://broker.example.com:1883">
                         </div>
                         <div class="form-group">
-                            <label>Username</label>
+                            <label>用户名</label>
                             <input type="text" id="mqtt-username">
                         </div>
                         <div class="form-group">
-                            <label>Password</label>
+                            <label>密码</label>
                             <input type="password" id="mqtt-password">
                         </div>
                         <div class="form-group">
-                            <label>Topic Template</label>
+                            <label>主题模板</label>
                             <input type="text" id="mqtt-topic" placeholder="application/{app_id}/device/{dev_eui}/up">
                         </div>
                         <div class="form-group">
                             <label>
                                 <input type="checkbox" id="mqtt-enabled">
-                                Enable MQTT Integration
+                                启用MQTT集成
                             </label>
                         </div>
-                        <button type="submit" class="btn btn-primary">Save MQTT Settings</button>
+                        <button type="submit" class="btn btn-primary">保存MQTT设置</button>
                     </form>
                 </div>
             </div>
             
             <div class="app-section">
-                <h4>Devices in this Application</h4>
+                <h4>应用中的设备</h4>
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>DevEUI</th>
-                            <th>Name</th>
-                            <th>Status</th>
-                            <th>Last Seen</th>
+                            <th>设备EUI</th>
+                            <th>名称</th>
+                            <th>状态</th>
+                            <th>最后上线</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1122,20 +1216,20 @@ async function viewApplication(id) {
                                     <td><span class="status-${
                                       device.isDisabled ? "inactive" : "active"
                                     }">${
-                                    device.isDisabled ? "Disabled" : "Active"
+                                    device.isDisabled ? "已禁用" : "活跃"
                                   }</span></td>
                                     <td>${
                                       device.lastSeenAt
                                         ? new Date(
                                             device.lastSeenAt
                                           ).toLocaleString()
-                                        : "Never"
+                                        : "从未"
                                     }</td>
                                 </tr>
                             `
                                 )
                                 .join("")
-                            : '<tr><td colspan="4">No devices in this application</td></tr>'
+                            : '<tr><td colspan="4">此应用中暂无设备</td></tr>'
                         }
                     </tbody>
                 </table>
@@ -1157,8 +1251,8 @@ async function viewApplication(id) {
     // 加载应用今日消息数
     loadApplicationMessageCount(id);
   } catch (error) {
-    console.error("Failed to load application details:", error);
-    showNotification("Failed to load application details", "error");
+    console.error("加载应用详情失败:", error);
+    showNotification("加载应用详情失败", "error");
   }
 }
 
@@ -1198,7 +1292,7 @@ async function loadIntegrationSettings(appId) {
         integrations.mqtt.enabled || false;
     }
   } catch (error) {
-    console.error("Failed to load integration settings:", error);
+    console.error("加载集成设置失败:", error);
     // 如果加载失败，使用默认值
     document.getElementById("http-headers").value = "{}";
     document.getElementById("mqtt-topic").value =
@@ -1236,7 +1330,7 @@ async function saveHTTPIntegration(appId) {
       try {
         parsedHeaders = JSON.parse(headers);
       } catch (err) {
-        showNotification("Invalid JSON format for headers", "error");
+        showNotification("HTTP头部的JSON格式无效", "error");
         return;
       }
     }
@@ -1250,10 +1344,7 @@ async function saveHTTPIntegration(appId) {
 
     // 验证必填字段
     if (data.enabled && !data.endpoint) {
-      showNotification(
-        "Webhook URL is required when HTTP integration is enabled",
-        "error"
-      );
+      showNotification("启用HTTP集成时必须填写Webhook地址", "error");
       return;
     }
 
@@ -1263,17 +1354,17 @@ async function saveHTTPIntegration(appId) {
     );
     const originalText = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.textContent = "Saving...";
+    submitBtn.textContent = "保存中...";
 
     await apiRequest("PUT", `/applications/${appId}/integrations/http`, data);
-    showNotification("HTTP integration settings saved successfully", "success");
+    showNotification("HTTP集成设置保存成功", "success");
 
     // 恢复按钮状态
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;
   } catch (error) {
-    console.error("Failed to save HTTP integration:", error);
-    showNotification("Failed to save HTTP integration settings", "error");
+    console.error("保存HTTP集成失败:", error);
+    showNotification("保存HTTP集成设置失败", "error");
 
     // 恢复按钮状态
     const submitBtn = document.querySelector(
@@ -1281,7 +1372,7 @@ async function saveHTTPIntegration(appId) {
     );
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Save HTTP Settings";
+      submitBtn.textContent = "保存HTTP设置";
     }
   }
 }
@@ -1304,10 +1395,7 @@ async function saveMQTTIntegration(appId) {
 
     // 验证必填字段
     if (data.enabled && !data.brokerUrl) {
-      showNotification(
-        "MQTT Broker URL is required when MQTT integration is enabled",
-        "error"
-      );
+      showNotification("启用MQTT集成时必须填写MQTT服务器地址", "error");
       return;
     }
 
@@ -1317,17 +1405,17 @@ async function saveMQTTIntegration(appId) {
     );
     const originalText = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.textContent = "Saving...";
+    submitBtn.textContent = "保存中...";
 
     await apiRequest("PUT", `/applications/${appId}/integrations/mqtt`, data);
-    showNotification("MQTT integration settings saved successfully", "success");
+    showNotification("MQTT集成设置保存成功", "success");
 
     // 恢复按钮状态
     submitBtn.disabled = false;
     submitBtn.textContent = originalText;
   } catch (error) {
-    console.error("Failed to save MQTT integration:", error);
-    showNotification("Failed to save MQTT integration settings", "error");
+    console.error("保存MQTT集成失败:", error);
+    showNotification("保存MQTT集成设置失败", "error");
 
     // 恢复按钮状态
     const submitBtn = document.querySelector(
@@ -1335,7 +1423,7 @@ async function saveMQTTIntegration(appId) {
     );
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Save MQTT Settings";
+      submitBtn.textContent = "保存MQTT设置";
     }
   }
 }
@@ -1346,10 +1434,10 @@ async function testIntegration(appId, type) {
   testModal.className = "modal";
   testModal.innerHTML = `
     <div class="modal-content">
-        <h3>Testing ${type.toUpperCase()} Integration</h3>
+        <h3>测试${type.toUpperCase()}集成</h3>
         <div class="test-progress">
             <div class="loading-spinner"></div>
-            <p id="test-status">Connecting...</p>
+            <p id="test-status">连接中...</p>
         </div>
     </div>
   `;
@@ -1362,27 +1450,23 @@ async function testIntegration(appId, type) {
       `/applications/${appId}/integrations/test`,
       { type }
     );
-    document.getElementById("test-status").textContent =
-      "Connection successful!";
+    document.getElementById("test-status").textContent = "连接成功！";
     document.querySelector(".loading-spinner").style.display = "none";
 
     setTimeout(() => {
       testModal.remove();
-      showNotification(
-        `${type.toUpperCase()} integration test successful!`,
-        "success"
-      );
+      showNotification(`${type.toUpperCase()}集成测试成功！`, "success");
     }, 1500);
   } catch (error) {
     document.getElementById(
       "test-status"
-    ).textContent = `Test failed: ${error.message}`;
+    ).textContent = `测试失败: ${error.message}`;
     document.querySelector(".loading-spinner").style.display = "none";
 
     setTimeout(() => {
       testModal.remove();
       showNotification(
-        `${type.toUpperCase()} integration test failed: ${error.message}`,
+        `${type.toUpperCase()}集成测试失败: ${error.message}`,
         "error"
       );
     }, 2000);
@@ -1412,7 +1496,7 @@ async function loadApplicationMessageCount(appId) {
       ? events.events.length
       : 0;
   } catch (error) {
-    console.error("Failed to load message count:", error);
+    console.error("加载消息计数失败:", error);
   }
 }
 
@@ -1516,32 +1600,32 @@ async function viewDevice(devEUI) {
 
     // 创建设备详情模态框
     showModal(
-      "Device Details",
+      "设备详情",
       `
             <div class="modal-large">
                 <div class="tabs">
-                    <button class="tab-button active" onclick="showDeviceTab('info', '${devEUI}')">Device Info</button>
-                    <button class="tab-button" onclick="showDeviceTab('keys', '${devEUI}')">Keys</button>
-                    <button class="tab-button" onclick="showDeviceTab('data', '${devEUI}')">Live Data</button>
-                    <button class="tab-button" onclick="showDeviceTab('history', '${devEUI}')">History</button>
-                    <button class="tab-button" onclick="showDeviceTab('downlink', '${devEUI}')">Downlink</button>
+                    <button class="tab-button active" onclick="showDeviceTab('info', '${devEUI}')">设备信息</button>
+                    <button class="tab-button" onclick="showDeviceTab('keys', '${devEUI}')">密钥配置</button>
+                    <button class="tab-button" onclick="showDeviceTab('data', '${devEUI}')">实时数据</button>
+                    <button class="tab-button" onclick="showDeviceTab('history', '${devEUI}')">历史记录</button>
+                    <button class="tab-button" onclick="showDeviceTab('downlink', '${devEUI}')">下行数据</button>
                 </div>
                 
                 <!-- Device Info Tab -->
                 <div id="device-info-tab" class="tab-content active">
                     <div class="device-info">
-                        <h3>Basic Information</h3>
+                        <h3>基本信息</h3>
                         <div class="info-grid">
                             <div class="info-item">
-                                <label>Device Name:</label>
+                                <label>设备名称:</label>
                                 <span>${device.name}</span>
                             </div>
                             <div class="info-item">
-                                <label>Device EUI:</label>
+                                <label>设备EUI:</label>
                                 <span class="mono">${device.devEUI}</span>
                             </div>
                             <div class="info-item">
-                                <label>Application:</label>
+                                <label>所属应用:</label>
                                 <span>${
                                   applications.find(
                                     (a) => a.id === device.applicationId
@@ -1549,78 +1633,78 @@ async function viewDevice(devEUI) {
                                 }</span>
                             </div>
                             <div class="info-item">
-                                <label>Status:</label>
+                                <label>状态:</label>
                                 <span class="status-${
                                   device.isDisabled ? "inactive" : "active"
                                 }">
-                                    ${device.isDisabled ? "Disabled" : "Active"}
+                                    ${device.isDisabled ? "已禁用" : "活跃"}
                                 </span>
                             </div>
                             <div class="info-item">
-                                <label>Join EUI:</label>
+                                <label>入网EUI:</label>
                                 <span class="mono">${
-                                  device.joinEUI || "Not set"
+                                  device.joinEUI || "未设置"
                                 }</span>
                             </div>
                             <div class="info-item">
-                                <label>Device Address:</label>
+                                <label>设备地址:</label>
                                 <span class="mono">${
-                                  device.devAddr || "Not activated"
+                                  device.devAddr || "未激活"
                                 }</span>
                             </div>
                             <div class="info-item">
-                                <label>Last Seen:</label>
+                                <label>最后上线:</label>
                                 <span>${
                                   device.lastSeenAt
                                     ? new Date(
                                         device.lastSeenAt
                                       ).toLocaleString()
-                                    : "Never"
+                                    : "从未"
                                 }</span>
                             </div>
                             <div class="info-item">
-                                <label>Battery:</label>
+                                <label>电池电量:</label>
                                 <span>${
                                   device.batteryLevel
                                     ? device.batteryLevel + "%"
-                                    : "Unknown"
+                                    : "未知"
                                 }</span>
                             </div>
                             <div class="info-item">
-                                <label>Frame Counters:</label>
-                                <span>Up: ${device.fCntUp || 0} | Down: ${
-        device.nFCntDown || 0
+                                <label>帧计数器:</label>
+                                <span>上行: ${device.fCntUp || 0} | 下行: ${
+        device.nFCntDown+1 || 0
       }</span>
                             </div>
                             <div class="info-item">
-                                <label>Data Rate:</label>
+                                <label>数据速率:</label>
                                 <span>DR${device.dr || 0}</span>
                             </div>
                         </div>
                         <div class="info-item full-width">
-                            <label>Description:</label>
-                            <p>${device.description || "No description"}</p>
+                            <label>描述:</label>
+                            <p>${device.description || "暂无描述"}</p>
                         </div>
                     </div>
                     <div class="device-actions">
-                        <button class="btn btn-secondary" onclick="editDevice('${devEUI}')">Edit Device</button>
-                        <button class="btn btn-danger" onclick="deleteDeviceFromModal('${devEUI}')">Delete Device</button>
+                        <button class="btn btn-secondary" onclick="editDevice('${devEUI}')">编辑设备</button>
+                        <button class="btn btn-danger" onclick="deleteDeviceFromModal('${devEUI}')">删除设备</button>
                     </div>
                 </div>
                 
                 <!-- Keys Tab -->
                 <div id="device-keys-tab" class="tab-content">
                     <div class="device-keys">
-                        <h3>Device Keys Configuration</h3>
+                        <h3>设备密钥配置</h3>
                         <div class="activation-type">
-                            <label>Activation Method:</label>
+                            <label>激活方式:</label>
                             <select id="activation-method" onchange="toggleActivationType('${devEUI}')">
                                 <option value="OTAA" ${
                                   !device.devAddr ? "selected" : ""
-                                }>OTAA (Over-The-Air Activation)</option>
+                                }>OTAA (空中激活)</option>
                                 <option value="ABP" ${
                                   device.devAddr ? "selected" : ""
-                                }>ABP (Activation By Personalization)</option>
+                                }>ABP (个性化激活)</option>
                             </select>
                         </div>
                         
@@ -1628,17 +1712,17 @@ async function viewDevice(devEUI) {
                         <div id="otaa-keys" class="${
                           device.devAddr ? "hidden" : ""
                         }">
-                            <h4>OTAA Keys</h4>
+                            <h4>OTAA密钥</h4>
                             <form id="otaa-keys-form">
                                 <div class="form-group">
-                                    <label>App Key (16 bytes hex)</label>
+                                    <label>应用密钥 (16字节十六进制)</label>
                                     <input type="text" id="device-app-key" pattern="[0-9A-Fa-f]{32}" maxlength="32">
                                 </div>
                                 <div class="form-group">
-                                    <label>Network Key (16 bytes hex)</label>
+                                    <label>网络密钥 (16字节十六进制)</label>
                                     <input type="text" id="device-nwk-key" pattern="[0-9A-Fa-f]{32}" maxlength="32">
                                 </div>
-                                <button type="submit" class="btn btn-primary">Save OTAA Keys</button>
+                                <button type="submit" class="btn btn-primary">保存OTAA密钥</button>
                             </form>
                         </div>
                         
@@ -1646,23 +1730,23 @@ async function viewDevice(devEUI) {
                         <div id="abp-keys" class="${
                           !device.devAddr ? "hidden" : ""
                         }">
-                            <h4>ABP Session Keys</h4>
+                            <h4>ABP会话密钥</h4>
                             <form id="abp-keys-form">
                                 <div class="form-group">
-                                    <label>Device Address (4 bytes hex)</label>
+                                    <label>设备地址 (4字节十六进制)</label>
                                     <input type="text" id="device-dev-addr" pattern="[0-9A-Fa-f]{8}" maxlength="8" value="${
                                       device.devAddr || ""
                                     }">
                                 </div>
                                 <div class="form-group">
-                                    <label>App Session Key (16 bytes hex)</label>
+                                    <label>应用会话密钥 (16字节十六进制)</label>
                                     <input type="text" id="device-apps-key" pattern="[0-9A-Fa-f]{32}" maxlength="32">
                                 </div>
                                 <div class="form-group">
-                                    <label>Network Session Key (16 bytes hex)</label>
+                                    <label>网络会话密钥 (16字节十六进制)</label>
                                     <input type="text" id="device-nwks-key" pattern="[0-9A-Fa-f]{32}" maxlength="32">
                                 </div>
-                                <button type="submit" class="btn btn-primary">Activate Device (ABP)</button>
+                                <button type="submit" class="btn btn-primary">激活设备 (ABP)</button>
                             </form>
                         </div>
                     </div>
@@ -1671,13 +1755,13 @@ async function viewDevice(devEUI) {
                 <!-- Live Data Tab -->
                 <div id="device-data-tab" class="tab-content">
                     <div class="live-data-section">
-                        <h3>Live Data</h3>
+                        <h3>实时数据</h3>
                         <div class="data-controls">
-                            <button class="btn btn-secondary" onclick="startLiveData('${devEUI}')">Start Live Updates</button>
-                            <button class="btn btn-secondary" onclick="stopLiveData()">Stop Updates</button>
+                            <button class="btn btn-secondary" onclick="startLiveData('${devEUI}')">开始实时更新</button>
+                            <button class="btn btn-secondary" onclick="stopLiveData()">停止更新</button>
                         </div>
                         <div id="live-data-container">
-                            <p>Click "Start Live Updates" to begin monitoring device data in real-time.</p>
+                            <p>点击"开始实时更新"以监控设备数据。</p>
                         </div>
                     </div>
                 </div>
@@ -1685,30 +1769,30 @@ async function viewDevice(devEUI) {
                 <!-- History Tab -->
                 <div id="device-history-tab" class="tab-content">
                     <div class="history-section">
-                        <h3>Data History</h3>
+                        <h3>数据历史</h3>
                         <div class="history-controls">
                             <select id="history-limit">
-                                <option value="20">Last 20 messages</option>
-                                <option value="50">Last 50 messages</option>
-                                <option value="100">Last 100 messages</option>
+                                <option value="20">最近20条消息</option>
+                                <option value="50">最近50条消息</option>
+                                <option value="100">最近100条消息</option>
                             </select>
-                            <button class="btn btn-secondary" onclick="loadDeviceHistory('${devEUI}')">Refresh</button>
-                            <button class="btn btn-secondary" onclick="exportDeviceData('${devEUI}')">Export CSV</button>
+                            <button class="btn btn-secondary" onclick="loadDeviceHistory('${devEUI}')">刷新</button>
+                            <button class="btn btn-secondary" onclick="exportDeviceData('${devEUI}')">导出CSV</button>
                         </div>
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>Time</th>
-                                    <th>FCnt</th>
-                                    <th>Port</th>
-                                    <th>Data (Hex)</th>
-                                    <th>RSSI</th>
-                                    <th>SNR</th>
-                                    <th>DR</th>
+                                    <th>时间</th>
+                                    <th>帧计数</th>
+                                    <th>端口</th>
+                                    <th>数据 (十六进制)</th>
+                                    <th>信号强度</th>
+                                    <th>信噪比</th>
+                                    <th>数据速率</th>
                                 </tr>
                             </thead>
                             <tbody id="device-history-table">
-                                <tr><td colspan="7">Click "Refresh" to load history</td></tr>
+                                <tr><td colspan="7">点击"刷新"加载历史记录</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1717,29 +1801,29 @@ async function viewDevice(devEUI) {
                 <!-- Downlink Tab -->
                 <div id="device-downlink-tab" class="tab-content">
                     <div class="downlink-section">
-                        <h3>Send Downlink Data</h3>
+                        <h3>发送下行数据</h3>
                         <form id="downlink-form">
                             <div class="form-group">
-                                <label>FPort (1-223)</label>
+                                <label>端口 (1-223)</label>
                                 <input type="number" id="downlink-fport" min="1" max="223" value="1" required>
                             </div>
                             <div class="form-group">
-                                <label>Payload (Hex)</label>
-                                <input type="text" id="downlink-payload" pattern="[0-9A-Fa-f]*" placeholder="e.g., 0102AABB" required>
-                                <small>Enter hex string (max 242 bytes)</small>
+                                <label>数据载荷 (十六进制)</label>
+                                <input type="text" id="downlink-payload" pattern="[0-9A-Fa-f]*" placeholder="例如: 0102AABB" required>
+                                <small>输入十六进制字符串 (最大242字节)</small>
                             </div>
                             <div class="form-group">
                                 <label>
                                     <input type="checkbox" id="downlink-confirmed">
-                                    Confirmed downlink (requires ACK)
+                                    确认下行 (需要ACK)
                                 </label>
                             </div>
-                            <button type="submit" class="btn btn-primary">Send Downlink</button>
+                            <button type="submit" class="btn btn-primary">发送下行数据</button>
                         </form>
                         
-                        <h4>Pending Downlinks</h4>
+                        <h4>待发送数据</h4>
                         <div id="pending-downlinks">
-                            <p>Loading...</p>
+                            <p>加载中...</p>
                         </div>
                     </div>
                 </div>
@@ -1755,8 +1839,8 @@ async function viewDevice(devEUI) {
     loadDeviceKeys(devEUI);
     loadPendingDownlinks(devEUI);
   } catch (error) {
-    console.error("Failed to load device details:", error);
-    showNotification("Failed to load device details", "error");
+    console.error("加载设备详情失败:", error);
+    showNotification("加载设备详情失败", "error");
   }
 }
 
@@ -1826,7 +1910,7 @@ async function loadDeviceKeys(devEUI) {
       document.getElementById("device-nwk-key").value = keys.nwkKey || "";
     }
   } catch (error) {
-    console.log("No keys found for device");
+    console.log("未找到设备密钥");
   }
 }
 
@@ -1840,9 +1924,9 @@ async function saveOTAAKeys(devEUI) {
       nwk_key: nwkKey || appKey, // 如果没有设置 nwk_key，使用 app_key
     });
 
-    showNotification("OTAA keys saved successfully", "success");
+    showNotification("OTAA密钥保存成功", "success");
   } catch (error) {
-    console.error("Failed to save OTAA keys:", error);
+    console.error("保存OTAA密钥失败:", error);
   }
 }
 
@@ -1858,11 +1942,11 @@ async function activateDeviceABP(devEUI) {
       nwk_s_key: nwkSKey,
     });
 
-    showNotification("Device activated successfully (ABP)", "success");
+    showNotification("设备激活成功 (ABP)", "success");
     closeModal();
     loadDevices(); // 刷新设备列表
   } catch (error) {
-    console.error("Failed to activate device:", error);
+    console.error("激活设备失败:", error);
   }
 }
 
@@ -1892,10 +1976,10 @@ async function loadDeviceHistory(devEUI) {
         )
         .join("");
     } else {
-      tbody.innerHTML = '<tr><td colspan="7">No data available</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7">暂无数据</td></tr>';
     }
   } catch (error) {
-    console.error("Failed to load device history:", error);
+    console.error("加载设备历史失败:", error);
   }
 }
 
@@ -1906,9 +1990,9 @@ async function exportDeviceData(devEUI) {
       `${API_BASE}/devices/${devEUI}/export?format=${format}`,
       "_blank"
     );
-    showNotification("Export started", "success");
+    showNotification("导出开始", "success");
   } catch (error) {
-    console.error("Failed to export device data:", error);
+    console.error("导出设备数据失败:", error);
   }
 }
 
@@ -1924,7 +2008,7 @@ async function sendDownlink(devEUI) {
       confirmed: confirmed,
     });
 
-    showNotification("Downlink queued successfully", "success");
+    showNotification("下行数据已加入队列", "success");
 
     // 清空表单
     document.getElementById("downlink-payload").value = "";
@@ -1933,7 +2017,7 @@ async function sendDownlink(devEUI) {
     // 刷新待发送列表
     loadPendingDownlinks(devEUI);
   } catch (error) {
-    console.error("Failed to send downlink:", error);
+    console.error("发送下行数据失败:", error);
   }
 }
 
@@ -1947,12 +2031,12 @@ async function loadPendingDownlinks(devEUI) {
                 <table class="data-table">
                     <thead>
                         <tr>
-                            <th>Created</th>
-                            <th>FPort</th>
-                            <th>Data</th>
-                            <th>Confirmed</th>
-                            <th>Status</th>
-                            <th>Action</th>
+                            <th>创建时间</th>
+                            <th>端口</th>
+                            <th>数据</th>
+                            <th>确认</th>
+                            <th>状态</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1965,12 +2049,12 @@ async function loadPendingDownlinks(devEUI) {
                                 ).toLocaleString()}</td>
                                 <td>${dl.fPort}</td>
                                 <td class="mono">${dl.data}</td>
-                                <td>${dl.confirmed ? "Yes" : "No"}</td>
-                                <td>${dl.isPending ? "Pending" : "Sent"}</td>
+                                <td>${dl.confirmed ? "是" : "否"}</td>
+                                <td>${dl.isPending ? "待发送" : "已发送"}</td>
                                 <td>
                                     ${
                                       dl.isPending
-                                        ? `<button class="btn btn-sm btn-danger" onclick="cancelDownlink('${dl.id}', '${devEUI}')">Cancel</button>`
+                                        ? `<button class="btn btn-sm btn-danger" onclick="cancelDownlink('${dl.id}', '${devEUI}')">取消</button>`
                                         : "-"
                                     }
                                 </td>
@@ -1982,20 +2066,20 @@ async function loadPendingDownlinks(devEUI) {
                 </table>
             `;
     } else {
-      container.innerHTML = "<p>No pending downlinks</p>";
+      container.innerHTML = "<p>暂无待发送数据</p>";
     }
   } catch (error) {
-    console.error("Failed to load pending downlinks:", error);
+    console.error("加载待发送数据失败:", error);
   }
 }
 
 async function cancelDownlink(downlinkId, devEUI) {
   try {
     await apiRequest("DELETE", `/downlinks/${downlinkId}`);
-    showNotification("Downlink cancelled", "success");
+    showNotification("下行数据已取消", "success");
     loadPendingDownlinks(devEUI);
   } catch (error) {
-    console.error("Failed to cancel downlink:", error);
+    console.error("取消下行数据失败:", error);
   }
 }
 
@@ -2007,7 +2091,7 @@ function startLiveData(devEUI) {
 
   const container = document.getElementById("live-data-container");
   container.innerHTML =
-    '<p>Monitoring live data...</p><div id="live-data-content"></div>';
+    '<p>正在监控实时数据...</p><div id="live-data-content"></div>';
 
   // 立即加载一次
   loadLiveData(devEUI);
@@ -2017,14 +2101,14 @@ function startLiveData(devEUI) {
     loadLiveData(devEUI);
   }, 5000);
 
-  showNotification("Live updates started", "success");
+  showNotification("实时更新已开始", "success");
 }
 
 function stopLiveData() {
   if (liveDataInterval) {
     clearInterval(liveDataInterval);
     liveDataInterval = null;
-    showNotification("Live updates stopped", "info");
+    showNotification("实时更新已停止", "info");
   }
 }
 
@@ -2038,25 +2122,25 @@ async function loadLiveData(devEUI) {
       content.innerHTML = `
                 <div class="live-data-display">
                     <div class="data-item">
-                        <label>Last Update:</label>
+                        <label>最后更新:</label>
                         <span>${new Date(
                           latest.receivedAt
                         ).toLocaleString()}</span>
                     </div>
                     <div class="data-item">
-                        <label>Frame Counter:</label>
+                        <label>帧计数器:</label>
                         <span>${latest.fCnt}</span>
                     </div>
                     <div class="data-item">
-                        <label>Port:</label>
+                        <label>端口:</label>
                         <span>${latest.fPort || "-"}</span>
                     </div>
                     <div class="data-item">
-                        <label>Data (Hex):</label>
-                        <span class="mono">${latest.data || "No payload"}</span>
+                        <label>数据 (十六进制):</label>
+                        <span class="mono">${latest.data || "无载荷"}</span>
                     </div>
                     <div class="data-item">
-                        <label>Signal:</label>
+                        <label>信号:</label>
                         <span>RSSI: ${latest.rssi} dBm, SNR: ${
         latest.snr
       } dB</span>
@@ -2064,10 +2148,10 @@ async function loadLiveData(devEUI) {
                 </div>
             `;
     } else {
-      content.innerHTML = "<p>No data received yet</p>";
+      content.innerHTML = "<p>暂未收到数据</p>";
     }
   } catch (error) {
-    console.error("Failed to load live data:", error);
+    console.error("加载实时数据失败:", error);
   }
 }
 
@@ -2076,30 +2160,30 @@ async function editDevice(devEUI) {
     const device = await apiRequest("GET", `/devices/${devEUI}`);
 
     showModal(
-      "Edit Device",
+      "编辑设备",
       `
             <form id="edit-device-form">
                 <div class="form-group">
-                    <label>Device Name *</label>
+                    <label>设备名称 *</label>
                     <input type="text" id="edit-device-name" value="${
                       device.name
                     }" required>
                 </div>
                 <div class="form-group">
-                    <label>Description</label>
+                    <label>描述</label>
                     <textarea id="edit-device-description" rows="3">${
                       device.description || ""
                     }</textarea>
                 </div>
                 <div class="form-group">
-                    <label>Device Profile</label>
+                    <label>设备配置</label>
                     <select id="edit-device-profile">
                         <option value="44444444-4444-4444-4444-444444444444" ${
                           device.deviceProfileId ===
                           "44444444-4444-4444-4444-444444444444"
                             ? "selected"
                             : ""
-                        }>Default Profile</option>
+                        }>默认配置</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -2107,10 +2191,10 @@ async function editDevice(devEUI) {
                         <input type="checkbox" id="edit-device-disabled" ${
                           device.isDisabled ? "checked" : ""
                         }>
-                        Disable device
+                        禁用设备
                     </label>
                 </div>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="submit" class="btn btn-primary">保存更改</button>
             </form>
         `
     );
@@ -2132,27 +2216,27 @@ async function editDevice(devEUI) {
           });
 
           closeModal();
-          showNotification("Device updated successfully", "success");
+          showNotification("设备更新成功", "success");
           loadDevices();
         } catch (error) {
-          console.error("Failed to update device:", error);
+          console.error("更新设备失败:", error);
         }
       });
   } catch (error) {
-    console.error("Failed to load device for editing:", error);
-    showNotification("Failed to load device", "error");
+    console.error("加载设备进行编辑失败:", error);
+    showNotification("加载设备失败", "error");
   }
 }
 
 async function deleteDeviceFromModal(devEUI) {
-  if (confirm("Are you sure you want to delete this device?")) {
+  if (confirm("确定要删除这个设备吗？")) {
     try {
       await apiRequest("DELETE", `/devices/${devEUI}`);
-      showNotification("Device deleted successfully", "success");
+      showNotification("设备删除成功", "success");
       closeModal();
       loadDevices();
     } catch (error) {
-      console.error("Failed to delete device:", error);
+      console.error("删除设备失败:", error);
     }
   }
 }
@@ -2163,7 +2247,7 @@ async function viewGateway(gatewayId) {
     const gateway = await apiRequest("GET", `/gateways/${gatewayId}`);
 
     showModal(
-      "Gateway Details",
+      "网关详情",
       `
             <div class="gateway-details">
                 <div class="gateway-header">
@@ -2175,33 +2259,33 @@ async function viewGateway(gatewayId) {
                     }">
                         ${
                           gateway.lastSeenAt && isOnline(gateway.lastSeenAt)
-                            ? "Online"
-                            : "Offline"
+                            ? "在线"
+                            : "离线"
                         }
                     </span>
                 </div>
                 
                 <div class="gateway-info-grid">
                     <div class="info-section">
-                        <h4>Basic Information</h4>
+                        <h4>基本信息</h4>
                         <div class="info-item">
-                            <label>Gateway ID:</label>
+                            <label>网关ID:</label>
                             <span class="mono">${gateway.gatewayId}</span>
                         </div>
                         <div class="info-item">
-                            <label>Model:</label>
-                            <span>${gateway.model || "Unknown"}</span>
+                            <label>型号:</label>
+                            <span>${gateway.model || "未知"}</span>
                         </div>
                         <div class="info-item">
-                            <label>Last Seen:</label>
+                            <label>最后上线:</label>
                             <span>${
                               gateway.lastSeenAt
                                 ? new Date(gateway.lastSeenAt).toLocaleString()
-                                : "Never"
+                                : "从未"
                             }</span>
                         </div>
                         <div class="info-item">
-                            <label>Created:</label>
+                            <label>创建时间:</label>
                             <span>${new Date(
                               gateway.createdAt
                             ).toLocaleString()}</span>
@@ -2209,29 +2293,29 @@ async function viewGateway(gatewayId) {
                     </div>
                     
                     <div class="info-section">
-                        <h4>Location</h4>
+                        <h4>位置信息</h4>
                         <div class="info-item">
-                            <label>Latitude:</label>
+                            <label>纬度:</label>
                             <span>${
                               gateway.location
                                 ? gateway.location.latitude.toFixed(6)
-                                : "Not set"
+                                : "未设置"
                             }</span>
                         </div>
                         <div class="info-item">
-                            <label>Longitude:</label>
+                            <label>经度:</label>
                             <span>${
                               gateway.location
                                 ? gateway.location.longitude.toFixed(6)
-                                : "Not set"
+                                : "未设置"
                             }</span>
                         </div>
                         <div class="info-item">
-                            <label>Altitude:</label>
+                            <label>高度:</label>
                             <span>${
                               gateway.location
-                                ? gateway.location.altitude + " m"
-                                : "Not set"
+                                ? gateway.location.altitude + " 米"
+                                : "未设置"
                             }</span>
                         </div>
                         ${
@@ -2243,43 +2327,43 @@ async function viewGateway(gatewayId) {
                 </div>
                 
                 <div class="gateway-stats">
-                    <h4>Statistics (Last 24 Hours)</h4>
+                    <h4>统计信息 (最近24小时)</h4>
                     <div class="stats-grid">
                         <div class="stat-card">
-                            <h5>Uplink Messages</h5>
-                            <p class="stat-number" id="gw-uplink-count">Loading...</p>
+                            <h5>上行消息</h5>
+                            <p class="stat-number" id="gw-uplink-count">加载中...</p>
                         </div>
                         <div class="stat-card">
-                            <h5>Downlink Messages</h5>
-                            <p class="stat-number" id="gw-downlink-count">Loading...</p>
+                            <h5>下行消息</h5>
+                            <p class="stat-number" id="gw-downlink-count">加载中...</p>
                         </div>
                         <div class="stat-card">
-                            <h5>Active Devices</h5>
-                            <p class="stat-number" id="gw-device-count">Loading...</p>
+                            <h5>活跃设备</h5>
+                            <p class="stat-number" id="gw-device-count">加载中...</p>
                         </div>
                         <div class="stat-card">
-                            <h5>Average RSSI</h5>
-                            <p class="stat-number" id="gw-avg-rssi">Loading...</p>
+                            <h5>平均信号强度</h5>
+                            <p class="stat-number" id="gw-avg-rssi">加载中...</p>
                         </div>
                     </div>
                 </div>
                 
                 <div class="gateway-config">
-                    <h4>Configuration</h4>
+                    <h4>配置</h4>
                     <form id="gateway-config-form">
                         <div class="form-group">
-                            <label>Gateway Name</label>
+                            <label>网关名称</label>
                             <input type="text" id="gw-name" value="${
                               gateway.name
                             }">
                         </div>
                         <div class="form-group">
-                            <label>Description</label>
+                            <label>描述</label>
                             <textarea id="gw-description" rows="3">${
                               gateway.description || ""
                             }</textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">Update Configuration</button>
+                        <button type="submit" class="btn btn-primary">更新配置</button>
                     </form>
                 </div>
             </div>
@@ -2298,14 +2382,9 @@ async function viewGateway(gatewayId) {
         await updateGatewayConfig(gatewayId);
       });
   } catch (error) {
-    console.error("Failed to load gateway details:", error);
-    showNotification("Failed to load gateway details", "error");
+    console.error("加载网关详情失败:", error);
+    showNotification("加载网关详情失败", "error");
   }
-}
-
-function isOnline(lastSeenAt) {
-  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-  return new Date(lastSeenAt) > fiveMinutesAgo;
 }
 
 async function loadGatewayStats(gatewayId) {
@@ -2351,9 +2430,9 @@ async function loadGatewayStats(gatewayId) {
       document.getElementById("gw-avg-rssi").textContent = avgRssi + " dBm";
     }
   } catch (error) {
-    console.error("Failed to load gateway stats:", error);
+    console.error("加载网关统计失败:", error);
     document.querySelectorAll('[id^="gw-"]').forEach((el) => {
-      el.textContent = "Error";
+      el.textContent = "错误";
     });
   }
 }
@@ -2366,10 +2445,10 @@ async function updateGatewayConfig(gatewayId) {
     };
 
     await apiRequest("PUT", `/gateways/${gatewayId}`, data);
-    showNotification("Gateway configuration updated", "success");
+    showNotification("网关配置更新成功", "success");
     loadGateways(); // 刷新网关列表
   } catch (error) {
-    console.error("Failed to update gateway:", error);
+    console.error("更新网关失败:", error);
   }
 }
 
@@ -2379,23 +2458,23 @@ async function editUser(userId) {
     const user = await apiRequest("GET", `/users/${userId}`);
 
     showModal(
-      "Edit User",
+      "编辑用户",
       `
             <form id="edit-user-form">
                 <div class="form-group">
-                    <label>Email *</label>
+                    <label>邮箱 *</label>
                     <input type="email" id="edit-user-email" value="${
                       user.email
                     }" required>
                 </div>
                 <div class="form-group">
-                    <label>First Name</label>
+                    <label>名</label>
                     <input type="text" id="edit-user-firstname" value="${
                       user.firstName || ""
                     }">
                 </div>
                 <div class="form-group">
-                    <label>Last Name</label>
+                    <label>姓</label>
                     <input type="text" id="edit-user-lastname" value="${
                       user.lastName || ""
                     }">
@@ -2405,7 +2484,7 @@ async function editUser(userId) {
                         <input type="checkbox" id="edit-user-is-active" ${
                           user.isActive ? "checked" : ""
                         }>
-                        Active
+                        活跃
                     </label>
                 </div>
                 <div class="form-group">
@@ -2413,10 +2492,10 @@ async function editUser(userId) {
                         <input type="checkbox" id="edit-user-is-admin" ${
                           user.isAdmin ? "checked" : ""
                         }>
-                        Administrator privileges
+                        管理员权限
                     </label>
                 </div>
-                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="submit" class="btn btn-primary">保存更改</button>
             </form>
         `
     );
@@ -2436,15 +2515,15 @@ async function editUser(userId) {
           });
 
           closeModal();
-          showNotification("User updated successfully", "success");
+          showNotification("用户更新成功", "success");
           loadUsers();
         } catch (error) {
-          console.error("Failed to update user:", error);
+          console.error("更新用户失败:", error);
         }
       });
   } catch (error) {
-    console.error("Failed to load user:", error);
-    showNotification("Failed to load user", "error");
+    console.error("加载用户失败:", error);
+    showNotification("加载用户失败", "error");
   }
 }
 
@@ -2491,7 +2570,7 @@ async function quickActivateDevice(devEUI) {
         showNotification("设备激活成功", "success");
         loadDevices();
       } catch (error) {
-        console.error("Failed to activate device:", error);
+        console.error("激活设备失败:", error);
       }
     });
 }
@@ -2534,7 +2613,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const submitButton = e.target.querySelector('button[type="submit"]');
         submitButton.disabled = true;
-        submitButton.textContent = "Updating...";
+        submitButton.textContent = "更新中...";
 
         const userData = {
           firstName: document.getElementById("profile-firstname").value,
@@ -2542,14 +2621,14 @@ document.addEventListener("DOMContentLoaded", () => {
         };
 
         await apiRequest("PUT", "/users/me", userData);
-        showNotification("Profile updated successfully", "success");
+        showNotification("资料更新成功", "success");
       } catch (error) {
-        console.error("Failed to update profile:", error);
-        showNotification("Failed to update profile", "error");
+        console.error("更新资料失败:", error);
+        showNotification("更新资料失败", "error");
       } finally {
         const submitButton = e.target.querySelector('button[type="submit"]');
         submitButton.disabled = false;
-        submitButton.textContent = "Update Profile";
+        submitButton.textContent = "更新资料";
       }
     });
 
@@ -2564,48 +2643,42 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // 验证密码
       if (newPassword.length < 6) {
-        showNotification(
-          "Password must be at least 6 characters long",
-          "error"
-        );
+        showNotification("密码长度至少为6个字符", "error");
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        showNotification("Passwords do not match", "error");
+        showNotification("两次输入的密码不一致", "error");
         return;
       }
 
       try {
         const submitButton = e.target.querySelector('button[type="submit"]');
         submitButton.disabled = true;
-        submitButton.textContent = "Changing...";
+        submitButton.textContent = "修改中...";
 
         await apiRequest("POST", "/users/me/password", {
           currentPassword,
           newPassword,
         });
 
-        showNotification("Password changed successfully", "success");
+        showNotification("密码修改成功", "success");
 
         // 清空表单
         e.target.reset();
       } catch (error) {
-        console.error("Failed to change password:", error);
-        showNotification(
-          "Failed to change password. Please check your current password.",
-          "error"
-        );
+        console.error("修改密码失败:", error);
+        showNotification("修改密码失败。请检查当前密码是否正确。", "error");
       } finally {
         const submitButton = e.target.querySelector('button[type="submit"]');
         submitButton.disabled = false;
-        submitButton.textContent = "Change Password";
+        submitButton.textContent = "修改密码";
       }
     });
 });
 
 // 页面卸载时清理
-window.addEventListener('beforeunload', () => {
+window.addEventListener("beforeunload", () => {
   if (autoRefreshTimer) {
     clearInterval(autoRefreshTimer);
   }
